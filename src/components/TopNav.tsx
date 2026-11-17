@@ -9,12 +9,15 @@ import {
   ViewId,
 } from '../types/ledger';
 import { currentYM, fmt, getCurrencyConfig } from '../utils/ledgerUtils';
+import { AuthModalTab } from './modals/AuthModal';
 
 interface TopNavProps {
   edition: EditionMode;
   state: LedgerState;
   activeView: ViewId;
   user: User | null;
+  adminUsernameActive: boolean;
+  isAdmin: boolean;
   cloudSynced: boolean;
   onSelectView: (view: ViewId) => void;
   onChangeEdition: (edition: EditionMode) => void;
@@ -30,7 +33,7 @@ interface TopNavProps {
   onExportCSV: () => void;
   onExportJSON: () => void;
   onRequestReset: () => void;
-  onOpenAuth: (tab: 'signin' | 'signup') => void;
+  onOpenAuth: (tab: AuthModalTab) => void;
   onSignInGoogle: () => void;
   onSignOut: () => void;
   onSyncCloudNow: () => void;
@@ -65,6 +68,7 @@ const VIEW_TO_GROUP: Record<ViewId, string> = {
   map: 'map',
   chores: 'more',
   settings: 'settings',
+  admin: 'auth',
 };
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -72,6 +76,8 @@ export const TopNav: React.FC<TopNavProps> = ({
   state,
   activeView,
   user,
+  adminUsernameActive,
+  isAdmin,
   cloudSynced,
   onSelectView,
   onChangeEdition,
@@ -174,7 +180,9 @@ export const TopNav: React.FC<TopNavProps> = ({
 
   const accountLabel = user
     ? (user.displayName || user.email?.split('@')[0] || 'Account').slice(0, 14)
-    : 'Sign In / Up';
+    : adminUsernameActive
+    ? 'Admin'
+    : 'Sign In';
 
   const renderMenuWrapper = (
     menuKey: string,
@@ -1022,8 +1030,11 @@ export const TopNav: React.FC<TopNavProps> = ({
                         onClick: () => runAction(onOpenCustomBalance),
                       },
                       {
-                        label: user ? 'Open Account & Cloud Window' : 'Open Sign In / Sign Up Window',
-                        hint: user ? 'Cloud' : 'Auth',
+                        label:
+                          user || adminUsernameActive
+                            ? 'Open Account & Cloud Window'
+                            : 'Open Sign In / Request Window',
+                        hint: user || adminUsernameActive ? 'Account' : 'Auth',
                         onClick: () => runAction(() => onOpenAuth('signin')),
                       },
                     ]}
@@ -1186,7 +1197,7 @@ export const TopNav: React.FC<TopNavProps> = ({
             )}
           </div>
 
-          {/* 9. Account: Sign In & Sign Up Hover Menu */}
+          {/* 9. Account: Sign In, Request an Account & Admin Controls */}
           <div
             className="relative"
             onMouseEnter={() => handleEnterMenu('auth')}
@@ -1216,15 +1227,45 @@ export const TopNav: React.FC<TopNavProps> = ({
                           ? 'Cloud Sync Active'
                           : 'Connecting Sync...'
                         : 'Email Verification Needed'
-                      : 'Cloud Account'}
+                      : adminUsernameActive
+                      ? 'Built-In Admin Session'
+                      : 'Account Access'}
                   </div>
                   <div className="mt-0.5 truncate text-xs font-bold text-neutral-950 dark:text-white">
-                    {user ? user.email || user.displayName : 'Sign in or create account'}
+                    {user
+                      ? user.email || user.displayName
+                      : adminUsernameActive
+                      ? 'admin (Controls Active)'
+                      : 'Sign in or request account'}
                   </div>
                 </div>
 
-                {user ? (
+                {user || adminUsernameActive ? (
                   <div className="flex flex-col gap-0.5">
+                    {isAdmin && (
+                      <CascadeItem
+                        subKey="auth-admin"
+                        activeSub={openSub}
+                        onHoverSub={setOpenSub}
+                        isAdults={isAdults}
+                        flyoutSide="left"
+                        label="Admin Controls"
+                        hint="Panel"
+                        onClick={() => runAction(() => onSelectView('admin'))}
+                        subItems={[
+                          {
+                            label: 'Open Admin Controls Window',
+                            hint: 'Requests',
+                            onClick: () => runAction(() => onSelectView('admin')),
+                          },
+                          {
+                            label: 'Export System JSON Backup',
+                            hint: '.json',
+                            onClick: () => runAction(onExportJSON),
+                          },
+                        ]}
+                      />
+                    )}
                     <CascadeItem
                       subKey="auth-profile"
                       activeSub={openSub}
@@ -1232,7 +1273,7 @@ export const TopNav: React.FC<TopNavProps> = ({
                       isAdults={isAdults}
                       flyoutSide="left"
                       label="Account & Cloud Status"
-                      hint={user.emailVerified ? 'Synced' : 'Verify'}
+                      hint={user ? (user.emailVerified ? 'Synced' : 'Verify') : 'Local'}
                       onClick={() => runAction(() => onOpenAuth('signin'))}
                       subItems={[
                         {
@@ -1309,31 +1350,26 @@ export const TopNav: React.FC<TopNavProps> = ({
                           onClick: () => runAction(onSignInGoogle),
                         },
                         {
-                          label: 'Open Email Sign In Window',
-                          hint: 'Email',
+                          label: 'Open Username / Email Sign In',
+                          hint: 'Login',
                           onClick: () => runAction(() => onOpenAuth('signin')),
                         },
                       ]}
                     />
                     <CascadeItem
-                      subKey="auth-signup"
+                      subKey="auth-request"
                       activeSub={openSub}
                       onHoverSub={setOpenSub}
                       isAdults={isAdults}
                       flyoutSide="left"
-                      label="Sign Up"
+                      label="Request an Account"
                       hint="Window"
-                      onClick={() => runAction(() => onOpenAuth('signup'))}
+                      onClick={() => runAction(() => onOpenAuth('request'))}
                       subItems={[
                         {
-                          label: 'Sign Up with Google',
-                          hint: '1-Click',
-                          onClick: () => runAction(onSignInGoogle),
-                        },
-                        {
-                          label: 'Open Create Account Window',
-                          hint: 'Register',
-                          onClick: () => runAction(() => onOpenAuth('signup')),
+                          label: 'Open Request an Account Form',
+                          hint: 'Apply',
+                          onClick: () => runAction(() => onOpenAuth('request')),
                         },
                       ]}
                     />

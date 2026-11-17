@@ -198,6 +198,87 @@
         "createdAt",
         "updatedAt"
       ]
+    },
+    "AccountRequest": {
+      "title": "AccountRequest",
+      "description": "Visitor submission requesting a new BalanceLedger account, reviewed by an administrator.",
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string",
+          "description": "Applicant full name.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Applicant email address.",
+          "maxLength": 254
+        },
+        "requestedEdition": {
+          "type": "string",
+          "enum": ["adults", "kids"],
+          "description": "Edition requested by applicant."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Optional note or use-case description.",
+          "maxLength": 300
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "approved", "rejected"],
+          "description": "Approval status controlled by admin."
+        },
+        "reviewedBy": {
+          "type": "string",
+          "description": "Admin identifier who reviewed the request.",
+          "maxLength": 254
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when request was submitted."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when request was last updated."
+        }
+      },
+      "required": ["fullName", "email", "requestedEdition", "reason", "status", "createdAt", "updatedAt"]
+    },
+    "AdminUser": {
+      "title": "AdminUser",
+      "description": "Authorized administrator registry entry.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the administrator.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Admin email address.",
+          "maxLength": 254
+        },
+        "role": {
+          "type": "string",
+          "enum": ["admin"],
+          "description": "Assigned admin role."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when admin entry was created."
+        }
+      },
+      "required": ["ownerId", "email", "role", "createdAt"]
     }
   },
   "firestore": {
@@ -212,6 +293,18 @@
         "$ref": "#/entities/LedgerEdition"
       },
       "description": "Edition-scoped ledger document ('adults' or 'kids') belonging strictly to {userId}."
+    },
+    "/accountRequests/{requestId}": {
+      "schema": {
+        "$ref": "#/entities/AccountRequest"
+      },
+      "description": "Account access requests submitted by visitors and managed exclusively by admins."
+    },
+    "/admins/{userId}": {
+      "schema": {
+        "$ref": "#/entities/AdminUser"
+      },
+      "description": "Admin RBAC registry documents."
     }
   }
 }

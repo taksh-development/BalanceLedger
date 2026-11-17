@@ -7,7 +7,9 @@
 4. **Immutable Identity & Timestamps**: `ownerId`, `edition`, and `createdAt` are immutable after creation. `createdAt == request.time` on creation, and `updatedAt == request.time` on creation and every update.
 5. **Edition Allowlist & Key Sync**: `editionId` and `edition` MUST equal `'adults'` or `'kids'`, and `data.edition == editionId`.
 6. **Bounded Payloads & Anti-Shadow Fields**: Every string has strict `.size()` bounds, every list has explicit `.size() <= MAX` bounds plus first-element type guarding when non-empty, every map (`monthlySnapshots`, `categoryBudgets`) has bounded key counts, and `keys().hasAll` + `keys().hasOnly` + `affectedKeys().hasOnly` forbid arbitrary shadow fields.
-7. **PII Isolation**: `email` lives exclusively in `/users/{userId}` and can only be read (`get`) or written by `isOwner(userId)` (`request.auth.uid == userId`); blanket `list` queries on `/users` are denied.
+7. **PII Isolation**: `email` lives exclusively in `/users/{userId}` and `/accountRequests/{requestId}` and can only be read by `isOwner(userId)` or `isAdmin()`; blanket `list` queries on `/users` are denied.
+8. **Account Request Integrity**: Visitors may only `create` `/accountRequests/{requestId}` with `status == 'pending'`; only verified admins (`isAdmin()`) may read, list, approve/reject (`status`), or delete requests.
+9. **Admin RBAC Protection**: Only verified admins (`takshdevelopment@gmail.com` with `email_verified == true` or existing `/admins/{uid}`) can create/modify `/admins/{userId}` documents; regular users cannot self-elevate.
 
 ## 2. The "Dirty Dozen" Payloads (Expected `PERMISSION_DENIED`)
 1. **Unauthenticated Read/Write**: Anonymous client attempts `get(/users/userA)` or `set(/users/userA/ledgers/adults)`.

@@ -5,7 +5,7 @@ import { EditionMode } from '../types/ledger';
 interface WelcomeGateProps {
   edition: EditionMode;
   onOpenSignIn: () => void;
-  onOpenSignUp: () => void;
+  onOpenRequestAccount: () => void;
   onChangeEdition: (edition: EditionMode) => void;
 }
 
@@ -51,7 +51,7 @@ const CAPABILITY_ITEMS = [
 export const WelcomeGate: React.FC<WelcomeGateProps> = ({
   edition,
   onOpenSignIn,
-  onOpenSignUp,
+  onOpenRequestAccount,
   onChangeEdition,
 }) => {
   const isAdults = edition === 'adults';
@@ -112,14 +112,14 @@ export const WelcomeGate: React.FC<WelcomeGateProps> = ({
             </button>
             <button
               type="button"
-              onClick={onOpenSignUp}
+              onClick={onOpenRequestAccount}
               className={`whitespace-nowrap shrink-0 border px-4 py-2 text-xs font-semibold transition-colors ${btnShape} ${
                 isAdults
                   ? 'border-neutral-900 bg-neutral-900 text-white hover:bg-neutral-800 dark:border-white dark:bg-white dark:text-neutral-900'
                   : 'border-indigo-600 bg-indigo-600 text-white hover:bg-indigo-700'
               }`}
             >
-              Sign Up
+              Request an Account
             </button>
           </div>
         </div>
@@ -135,7 +135,7 @@ export const WelcomeGate: React.FC<WelcomeGateProps> = ({
                 <span className="mx-2" aria-hidden="true">·</span>
                 <span>Annual 16th-of-Month Tracking</span>
                 <span className="mx-2" aria-hidden="true">·</span>
-                <span>9 Currencies</span>
+                <span>Admin-Approved Access</span>
               </p>
 
               <h1
@@ -154,7 +154,7 @@ export const WelcomeGate: React.FC<WelcomeGateProps> = ({
               </p>
             </div>
 
-            {/* Strictly 2 Primary Buttons: Sign In & Sign Up */}
+            {/* Strictly 2 Primary Buttons: Sign In & Request an Account */}
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -171,14 +171,14 @@ export const WelcomeGate: React.FC<WelcomeGateProps> = ({
 
               <button
                 type="button"
-                onClick={onOpenSignUp}
+                onClick={onOpenRequestAccount}
                 className={`inline-flex items-center gap-2 border px-6 py-3 text-sm font-semibold transition-colors ${btnShape} ${
                   isAdults
                     ? 'border-neutral-300 bg-white text-neutral-900 hover:border-neutral-400 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white'
                     : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white'
                 }`}
               >
-                <span>Sign Up</span>
+                <span>Request an Account</span>
               </button>
             </div>
           </div>
@@ -236,18 +236,18 @@ export const WelcomeGate: React.FC<WelcomeGateProps> = ({
                 </div>
                 <div className="flex items-baseline justify-between py-3">
                   <dt className="text-xs font-semibold text-neutral-600 dark:text-neutral-300">
-                    Ledger Modes Included
+                    Access Model
                   </dt>
                   <dd className="font-num text-xs font-bold text-neutral-950 dark:text-white">
-                    Adults &amp; Kids Editions
+                    Admin-Reviewed Accounts
                   </dd>
                 </div>
               </dl>
             </div>
 
             <div className="mt-6 border-t border-neutral-100 pt-4 text-xs text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
-              Sign in with Google in one click or register with email to access your private ledger
-              and cloud sync across sessions.
+              Sign in with Google or existing credentials, or submit an account request for
+              administrator review.
             </div>
           </div>
         </section>
@@ -313,11 +313,11 @@ export const WelcomeGate: React.FC<WelcomeGateProps> = ({
             <ol className="mt-5 space-y-4">
               <li className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
                 <div className="text-xs font-bold text-neutral-950 dark:text-white">
-                  01. Sign In or Create an Account
+                  01. Sign In or Request an Account
                 </div>
                 <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-300">
-                  Authenticate with Google in one step or sign up using your email and password to
-                  bind your private ledger to Firestore cloud storage.
+                  Existing users and administrators can sign in directly; new users can submit an
+                  account request for administrator approval.
                 </p>
               </li>
               <li className="border-b border-neutral-100 pb-4 dark:border-neutral-800">
@@ -404,14 +404,14 @@ export const WelcomeGate: React.FC<WelcomeGateProps> = ({
               </button>
               <button
                 type="button"
-                onClick={onOpenSignUp}
+                onClick={onOpenRequestAccount}
                 className={`flex-1 border px-4 py-2.5 text-xs font-semibold transition-colors ${btnShape} ${
                   isAdults
                     ? 'border-neutral-300 bg-white text-neutral-900 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white'
                     : 'border-slate-300 bg-white text-slate-900 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-white'
                 }`}
               >
-                Sign Up
+                Request an Account
               </button>
             </div>
           </div>
@@ -426,8 +426,8 @@ export const WelcomeGate: React.FC<WelcomeGateProps> = ({
             <button type="button" onClick={onOpenSignIn} className="hover:text-neutral-900 dark:hover:text-white">
               Sign In
             </button>
-            <button type="button" onClick={onOpenSignUp} className="hover:text-neutral-900 dark:hover:text-white">
-              Sign Up
+            <button type="button" onClick={onOpenRequestAccount} className="hover:text-neutral-900 dark:hover:text-white">
+              Request an Account
             </button>
           </div>
         </footer>

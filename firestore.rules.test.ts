@@ -110,4 +110,26 @@ export const DIRTY_DOZEN_PAYLOADS = [
     patch: { jars: ['invalid-primitive'] },
     expected: 'PERMISSION_DENIED',
   },
+  {
+    name: '13. Non-admin reading accountRequests PII or self-approving request',
+    auth: { uid: 'userA', email: 'a@example.com', email_verified: true },
+    path: 'accountRequests/req1',
+    operation: 'create',
+    payload: {
+      fullName: 'User A',
+      email: 'a@example.com',
+      requestedEdition: 'adults',
+      reason: 'Self approve attempt',
+      status: 'approved',
+    },
+    expected: 'PERMISSION_DENIED',
+  },
+  {
+    name: '14. Non-admin self-promoting into /admins',
+    auth: { uid: 'userA', email: 'a@example.com', email_verified: true },
+    path: 'admins/userA',
+    operation: 'create',
+    payload: { ownerId: 'userA', email: 'a@example.com', role: 'admin' },
+    expected: 'PERMISSION_DENIED',
+  },
 ] as const;

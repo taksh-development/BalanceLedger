@@ -8,12 +8,16 @@ import {
   signOut,
 } from 'firebase/auth';
 import {
+  collection,
+  deleteDoc,
   doc,
   getDoc,
   onSnapshot,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
 } from 'firebase/firestore';
 import { FloatingTools } from './components/FloatingTools';
 import { KpiStrip } from './components/KpiStrip';
@@ -30,6 +34,7 @@ import {
   googleProvider,
   handleFirestoreError,
 } from './firebase';
+import { AdminView } from './components/views/AdminView';
 import { AnalyticsView } from './components/views/AnalyticsView';
 import { ChoresView, SettingsView } from './components/views/ManageViews';
 import { OverviewView } from './components/views/OverviewView';
@@ -50,6 +55,7 @@ import {
 import { SpendMapView } from './components/views/SpendMapView';
 import { SubscriptionsView } from './components/views/SubscriptionsView';
 import {
+  AccountRequestItem,
   ActivityEntry,
   BadgeTone,
   CurrencyCode,
@@ -84,6 +90,48 @@ interface PendingPinAction {
   run: () => void;
 }
 
+const REQUESTS_STORE_KEY = 'balanceledger_account_requests_v1';
+const ADMIN_SESSION_KEY = 'balanceledger_admin_session_v1';
+
+function loadLocalRequests(): AccountRequestItem[] {
+  try {
+    const raw = localStorage.getItem(REQUESTS_STORE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalRequests(items: AccountRequestItem[]): void {
+  try {
+    localStorage.setItem(REQUESTS_STORE_KEY, JSON.stringify(items));
+  } catch {
+    // Ignore storage errors cleanly
+  }
+}
+
+function loadAdminSession(): boolean {
+  try {
+    return sessionStorage.getItem(ADMIN_SESSION_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveAdminSession(active: boolean): void {
+  try {
+    if (active) {
+      sessionStorage.setItem(ADMIN_SESSION_KEY, 'true');
+    } else {
+      sessionStorage.removeItem(ADMIN_SESSION_KEY);
+    }
+  } catch {
+    // Ignore storage errors cleanly
+  }
+}
+
 export default function App() {
   const [edition, setEdition] = useState<EditionMode>(() => loadActiveEdition());
   const [state, setState] = useState<LedgerState>(() =>
@@ -104,10 +152,17 @@ export default function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authInitialTab, setAuthInitialTab] = useState<AuthModalTab>('signin');
   const [cloudSynced, setCloudSynced] = useState(false);
-  const [, setUserRefreshTick] = useState(0);
+  const [verifiedTick, setVerifiedTick] = useState(0);
+  const [adminUsernameActive, setAdminUsernameActive] = useState<boolean>(() => loadAdminSession());
+  const [localRequests, setLocalRequests] = useState<AccountRequestItem[]>(() =>
+    loadLocalRequests()
+  );
+  const [cloudRequests, setCloudRequests] = useState<AccountRequestItem[]>([]);
 
   const stateRef = useRef(state);
   stateRef.current = state;
+  const adminSessionRef = useRef(adminUsernameActive);
+  adminSessionRef.current = adminUsernameActive;
   const skipNextCloudPushRef = useRef(false);
   const ledgerDocCreatedRef = useRef(false);
   const didAutoPromptRef = useRef(false);
@@ -202,6 +257,19 @@ export default function App() {
     [ensureUserProfileDoc]
   );
 
+  const isFirebaseAdmin = Boolean(
+    user && user.emailVerified && user.email?.toLowerCase() === 'takshdevelopment@gmail.com'
+  );
+  const isAdmin = adminUsernameActive || isFirebaseAdmin;
+
+  useEffect(() => {
+    saveLocalRequests(localRequests);
+  }, [localRequests]);
+
+  useEffect(() => {
+    saveAdminSession(adminUsernameActive);
+  }, [adminUsernameActive]);
+
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
@@ -209,7 +277,7 @@ export default function App() {
       if (!nextUser) {
         setCloudSynced(false);
         ledgerDocCreatedRef.current = false;
-        if (!didAutoPromptRef.current) {
+        if (!didAutoPromptRef.current && !adminSessionRef.current) {
           didAutoPromptRef.current = true;
           setAuthInitialTab('signin');
           setAuthOpen(true);
@@ -301,7 +369,7 @@ export default function App() {
       cancelled = true;
       if (unsubSnapshot) unsubSnapshot();
     };
-  }, [authReady, user, edition, ensureUserProfileDoc, pushLedgerToCloud]);
+  }, [authReady, user, verifiedTick, edition, ensureUserProfileDoc, pushLedgerToCloud]);
 
   useEffect(() => {
     if (!authReady || !user || !user.emailVerified || !cloudSynced) return;
@@ -313,7 +381,50 @@ export default function App() {
       void pushLedgerToCloud(user, edition, state);
     }, 650);
     return () => clearTimeout(timer);
-  }, [authReady, user, edition, state, cloudSynced, pushLedgerToCloud]);
+  }, [authReady, user, verifiedTick, edition, state, cloudSynced, pushLedgerToCloud]);
+
+  useEffect(() => {
+    if (!authReady || !isFirebaseAdmin) {
+      setCloudRequests([]);
+      return;
+    }
+
+    const reqQuery = query(
+      collection(db, 'accountRequests'),
+      where('status', 'in', ['pending', 'approved', 'rejected'])
+    );
+
+    const unsub = onSnapshot(
+      reqQuery,
+      (snap) => {
+        const items: (AccountRequestItem & { sortMs: number })[] = snap.docs.map((d) => {
+          const data = d.data();
+          const ts = data.createdAt as { toDate?: () => Date } | undefined;
+          const dateObj = ts && typeof ts.toDate === 'function' ? ts.toDate() : null;
+          return {
+            id: d.id,
+            fullName: typeof data.fullName === 'string' ? data.fullName : 'Unknown',
+            email: typeof data.email === 'string' ? data.email : '',
+            requestedEdition: data.requestedEdition === 'kids' ? 'kids' : 'adults',
+            reason: typeof data.reason === 'string' ? data.reason : '',
+            status:
+              data.status === 'approved' || data.status === 'rejected' ? data.status : 'pending',
+            reviewedBy: typeof data.reviewedBy === 'string' ? data.reviewedBy : undefined,
+            createdAtLabel: dateObj ? dateObj.toISOString().slice(0, 10) : todayStr(),
+            source: 'cloud',
+            sortMs: dateObj ? dateObj.getTime() : 0,
+          };
+        });
+        items.sort((a, b) => b.sortMs - a.sortMs);
+        setCloudRequests(items.map(({ sortMs: _ms, ...rest }) => rest));
+      },
+      (err) => {
+        handleFirestoreError(err, OperationType.LIST, 'accountRequests');
+      }
+    );
+
+    return () => unsub();
+  }, [authReady, isFirebaseAdmin, verifiedTick]);
 
   useEffect(() => {
     const onQuotaExceeded = () => setGmpExceeded(true);
@@ -655,10 +766,113 @@ export default function App() {
     notify(`Saved snapshot for ${payload.ym}.`);
   };
 
+  const handleRefreshVerification = useCallback(async () => {
+    const activeUser = auth.currentUser;
+    if (!activeUser) return;
+    await reload(activeUser);
+    await activeUser.getIdToken(true);
+    setUser(auth.currentUser);
+    setVerifiedTick((t) => t + 1);
+  }, []);
+
+  const handleSubmitAccountRequest = useCallback(
+    async (payload: {
+      fullName: string;
+      email: string;
+      requestedEdition: EditionMode;
+      reason: string;
+    }) => {
+      const reqId = uid();
+      const createdAtLabel = todayStr();
+      const localItem: AccountRequestItem = {
+        id: reqId,
+        fullName: payload.fullName.slice(0, 80),
+        email: payload.email.slice(0, 254),
+        requestedEdition: payload.requestedEdition,
+        reason: payload.reason.slice(0, 300),
+        status: 'pending',
+        createdAtLabel,
+        source: 'local',
+      };
+      setLocalRequests((prev) => [localItem, ...prev]);
+
+      try {
+        await setDoc(doc(db, 'accountRequests', reqId), {
+          fullName: localItem.fullName,
+          email: localItem.email,
+          requestedEdition: localItem.requestedEdition,
+          reason: localItem.reason,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } catch {
+        // Local mirror already persisted cleanly if network/Firestore is unavailable
+      }
+    },
+    []
+  );
+
+  const handleUpdateAccountRequestStatus = useCallback(
+    async (req: AccountRequestItem, status: 'approved' | 'rejected') => {
+      const reviewer = user?.email || 'admin';
+      setLocalRequests((prev) =>
+        prev.map((item) =>
+          item.id === req.id ? { ...item, status, reviewedBy: reviewer } : item
+        )
+      );
+
+      if (req.source === 'cloud' && isFirebaseAdmin) {
+        const reqPath = `accountRequests/${req.id}`;
+        try {
+          await updateDoc(doc(db, 'accountRequests', req.id), {
+            status,
+            reviewedBy: reviewer.slice(0, 254),
+            updatedAt: serverTimestamp(),
+          });
+        } catch (err) {
+          handleFirestoreError(err, OperationType.UPDATE, reqPath);
+        }
+      }
+      notify(`Account request ${status}.`);
+    },
+    [isFirebaseAdmin, notify, user]
+  );
+
+  const handleDeleteAccountRequest = useCallback(
+    async (req: AccountRequestItem) => {
+      setLocalRequests((prev) => prev.filter((item) => item.id !== req.id));
+      if (req.source === 'cloud' && isFirebaseAdmin) {
+        const reqPath = `accountRequests/${req.id}`;
+        try {
+          await deleteDoc(doc(db, 'accountRequests', req.id));
+        } catch (err) {
+          handleFirestoreError(err, OperationType.DELETE, reqPath);
+        }
+      }
+      notify('Account request deleted.');
+    },
+    [isFirebaseAdmin, notify]
+  );
+
+  const allRequests: AccountRequestItem[] = [
+    ...cloudRequests,
+    ...localRequests.filter((local) => !cloudRequests.some((cloud) => cloud.id === local.id)),
+  ];
+
+  const handleSignOutAll = async () => {
+    if (user) {
+      await signOut(auth);
+    }
+    setAdminUsernameActive(false);
+    setActiveView('home');
+    notify('Signed out. Local data remains saved.');
+  };
+
   const rankLabel = getRankLabel(state.wallet + state.saved);
   const netWorth = r2(state.wallet + state.saved + state.share);
 
-  if (!user) {
+  if (!user && !adminUsernameActive) {
     return (
       <>
         <WelcomeGate
@@ -667,8 +881,8 @@ export default function App() {
             setAuthInitialTab('signin');
             setAuthOpen(true);
           }}
-          onOpenSignUp={() => {
-            setAuthInitialTab('signup');
+          onOpenRequestAccount={() => {
+            setAuthInitialTab('request');
             setAuthOpen(true);
           }}
           onChangeEdition={handleChangeEdition}
@@ -679,10 +893,19 @@ export default function App() {
           open={authOpen}
           initialTab={authInitialTab}
           user={user}
+          adminUsernameActive={adminUsernameActive}
+          isAdmin={isAdmin}
           cloudSynced={cloudSynced}
           onClose={() => setAuthOpen(false)}
           onNotify={notify}
-          onRefreshUser={() => setUserRefreshTick((t) => t + 1)}
+          onRefreshUser={handleRefreshVerification}
+          onAdminSignIn={() => {
+            setAdminUsernameActive(true);
+            setActiveView('admin');
+          }}
+          onAdminSignOut={() => setAdminUsernameActive(false)}
+          onOpenAdminPanel={() => setActiveView('admin')}
+          onSubmitAccountRequest={handleSubmitAccountRequest}
         />
 
         {toast && (
@@ -750,8 +973,7 @@ export default function App() {
           <button
             type="button"
             onClick={async () => {
-              await reload(user);
-              setUserRefreshTick((t) => t + 1);
+              await handleRefreshVerification();
               if (auth.currentUser?.emailVerified) {
                 notify('Email verified! Cloud sync enabled.');
               } else {
@@ -770,6 +992,8 @@ export default function App() {
         state={state}
         activeView={activeView}
         user={user}
+        adminUsernameActive={adminUsernameActive}
+        isAdmin={isAdmin}
         cloudSynced={cloudSynced}
         onSelectView={handleSelectView}
         onChangeEdition={handleChangeEdition}
@@ -810,10 +1034,7 @@ export default function App() {
             setAuthOpen(true);
           }
         }}
-        onSignOut={async () => {
-          await signOut(auth);
-          notify('Signed out. Local data remains saved.');
-        }}
+        onSignOut={handleSignOutAll}
         onSyncCloudNow={async () => {
           if (!user || !user.emailVerified) {
             setAuthInitialTab('signin');
@@ -1506,6 +1727,45 @@ export default function App() {
             }}
           />
         )}
+
+        {activeView === 'admin' && isAdmin && (
+          <AdminView
+            edition={edition}
+            state={state}
+            user={user}
+            adminUsernameActive={adminUsernameActive}
+            isFirebaseAdmin={isFirebaseAdmin}
+            requests={allRequests}
+            onApproveRequest={(req) => {
+              void handleUpdateAccountRequestStatus(req, 'approved');
+            }}
+            onRejectRequest={(req) => {
+              void handleUpdateAccountRequestStatus(req, 'rejected');
+            }}
+            onDeleteRequest={(req) => {
+              void handleDeleteAccountRequest(req);
+            }}
+            onConnectGoogleAdmin={async () => {
+              try {
+                const cred = await signInWithPopup(auth, googleProvider);
+                notify(`Signed in as ${cred.user.displayName || cred.user.email || 'Admin'}.`);
+              } catch {
+                notify('Could not open Google Admin sign-in popup.');
+              }
+            }}
+            onTogglePinLock={(enabled) => {
+              setState((prev) => ({ ...prev, pinEnabled: enabled }));
+              notify(enabled ? 'PIN protection enabled.' : 'PIN protection disabled.');
+            }}
+            onChangeEdition={handleChangeEdition}
+            onLoadBaseline={handleLoadBaseline}
+            onExportJSON={() => {
+              exportLedgerJSON(state, edition);
+              notify('Exported full JSON backup.');
+            }}
+            onOpenCustomBalance={handleOpenCustomBalance}
+          />
+        )}
       </main>
 
       <CustomBalanceModal
@@ -1564,10 +1824,22 @@ export default function App() {
         open={authOpen}
         initialTab={authInitialTab}
         user={user}
+        adminUsernameActive={adminUsernameActive}
+        isAdmin={isAdmin}
         cloudSynced={cloudSynced}
         onClose={() => setAuthOpen(false)}
         onNotify={notify}
-        onRefreshUser={() => setUserRefreshTick((t) => t + 1)}
+        onRefreshUser={handleRefreshVerification}
+        onAdminSignIn={() => {
+          setAdminUsernameActive(true);
+          setActiveView('admin');
+        }}
+        onAdminSignOut={() => {
+          setAdminUsernameActive(false);
+          setActiveView('home');
+        }}
+        onOpenAdminPanel={() => setActiveView('admin')}
+        onSubmitAccountRequest={handleSubmitAccountRequest}
       />
 
       {toast && (

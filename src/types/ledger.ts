@@ -16,7 +16,20 @@ export type ViewId =
   | 'bought'
   | 'iou'
   | 'chores'
-  | 'settings';
+  | 'settings'
+  | 'admin';
+
+export interface AccountRequestItem {
+  id: string;
+  fullName: string;
+  email: string;
+  requestedEdition: EditionMode;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reviewedBy?: string;
+  createdAtLabel: string;
+  source: 'cloud' | 'local';
+}
 
 export type BadgeTone = 'green' | 'red' | 'blue' | 'amber';
 

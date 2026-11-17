@@ -32,6 +32,15 @@ service cloud.firestore {
       return isEmailVerified() && request.auth.uid == userId;
     }
 
+    function isBootstrappedAdmin() {
+      return isEmailVerified() && request.auth.token.email == 'takshdevelopment@gmail.com';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin()
+        || (isEmailVerified() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)));
+    }
+
     function isMapListBounded(arr, maxLen) {
       return arr is list && arr.size() <= maxLen && (arr.size() == 0 || arr[0] is map);
     }
@@ -117,9 +126,109 @@ service cloud.firestore {
         && data.updatedAt is timestamp;
     }
 
-    // --- Collection: /users/{userId} (PII Isolated to Owner) ---
+    function isValidAccountRequestCreate(data) {
+      return data.keys().hasAll([
+          'fullName', 'email', 'requestedEdition', 'reason', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'fullName', 'email', 'requestedEdition', 'reason', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.fullName is string
+        && data.fullName.size() >= 1
+        && data.fullName.size() <= 80
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && data.requestedEdition in ['adults', 'kids']
+        && data.reason is string
+        && data.reason.size() <= 300
+        && data.status == 'pending'
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAccountRequestUpdate(data) {
+      return data.keys().hasAll([
+          'fullName', 'email', 'requestedEdition', 'reason', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'fullName', 'email', 'requestedEdition', 'reason', 'status', 'reviewedBy', 'createdAt', 'updatedAt'
+        ])
+        && data.fullName is string
+        && data.fullName.size() >= 1
+        && data.fullName.size() <= 80
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && data.requestedEdition in ['adults', 'kids']
+        && data.reason is string
+        && data.reason.size() <= 300
+        && data.status in ['pending', 'approved', 'rejected']
+        && (!('reviewedBy' in data) || (data.reviewedBy is string && data.reviewedBy.size() <= 254))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminUser(data, userId) {
+      return data.keys().hasAll(['ownerId', 'email', 'role', 'createdAt'])
+        && data.keys().hasOnly(['ownerId', 'email', 'role', 'createdAt'])
+        && data.ownerId is string
+        && isValidId(data.ownerId)
+        && data.ownerId == userId
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && data.role == 'admin'
+        && data.createdAt is timestamp;
+    }
+
+    // --- Collection: /admins/{userId} ---
+    match /admins/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isBootstrappedAdmin() && existing().role == 'admin';
+      allow create: if isValidId(userId)
+        && isAdmin()
+        && isValidAdminUser(incoming(), userId)
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(userId)
+        && isAdmin()
+        && isValidAdminUser(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly(['email', 'role']);
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // --- Collection: /accountRequests/{requestId} ---
+    match /accountRequests/{requestId} {
+      allow get: if isValidId(requestId) && isAdmin();
+      allow list: if isBootstrappedAdmin()
+        && existing().status in ['pending', 'approved', 'rejected'];
+
+      allow create: if isValidId(requestId)
+        && isValidAccountRequestCreate(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(requestId)
+        && isAdmin()
+        && isValidAccountRequestUpdate(incoming())
+        && incoming().createdAt == existing().createdAt
+        && incoming().email == existing().email
+        && incoming().fullName == existing().fullName
+        && incoming().requestedEdition == existing().requestedEdition
+        && incoming().reason == existing().reason
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'status', 'reviewedBy', 'updatedAt'
+        ]);
+
+      allow delete: if isValidId(requestId) && isAdmin();
+    }
+
+    // --- Collection: /users/{userId} (PII Isolated to Owner or Admin) ---
     match /users/{userId} {
-      allow get: if isValidId(userId) && isOwner(userId);
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
       allow list: if false;
 
       allow create: if isValidId(userId)
@@ -138,7 +247,7 @@ service cloud.firestore {
           'displayName', 'preferredEdition', 'email', 'updatedAt'
         ]);
 
-      allow delete: if isValidId(userId) && isOwner(userId);
+      allow delete: if isValidId(userId) && (isOwner(userId) || isAdmin());
 
       // --- Subcollection: /users/{userId}/ledgers/{editionId} ---
       match /ledgers/{editionId} {
