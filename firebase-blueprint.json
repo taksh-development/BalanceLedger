@@ -1,0 +1,217 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user account profile and private PII metadata.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the account owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "User email address.",
+          "maxLength": 254
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name shown in ledger header.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "preferredEdition": {
+          "type": "string",
+          "enum": ["adults", "kids"],
+          "description": "Last active ledger edition."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when profile was last updated."
+        }
+      },
+      "required": ["ownerId", "email", "displayName", "preferredEdition", "createdAt", "updatedAt"]
+    },
+    "LedgerEdition": {
+      "title": "LedgerEdition",
+      "description": "Complete personal finance or pocket-money ledger state for one edition (adults or kids).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the ledger owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "edition": {
+          "type": "string",
+          "enum": ["adults", "kids"],
+          "description": "Ledger edition identifier matching document ID."
+        },
+        "name": {
+          "type": "string",
+          "description": "Account or profile label.",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "theme": {
+          "type": "string",
+          "enum": ["light", "dark"],
+          "description": "Visual theme mode."
+        },
+        "currency": {
+          "type": "string",
+          "enum": ["USD", "PAB", "EUR", "GBP", "CAD", "AUD", "MXN", "INR", "JPY"],
+          "description": "Active ISO currency code."
+        },
+        "wallet": {
+          "type": "number",
+          "description": "Spendable cash / checking balance."
+        },
+        "saved": {
+          "type": "number",
+          "description": "Savings reserve / vault balance."
+        },
+        "share": {
+          "type": "number",
+          "description": "Allocated giving / tax / share reserve."
+        },
+        "allowance": {
+          "type": "number",
+          "description": "Recurring deposit or weekly allowance amount."
+        },
+        "pinEnabled": {
+          "type": "boolean",
+          "description": "Whether PIN lock is enabled for sensitive actions."
+        },
+        "pinCode": {
+          "type": "string",
+          "description": "Numeric or alphanumeric PIN code.",
+          "minLength": 1,
+          "maxLength": 16
+        },
+        "skippedTotal": {
+          "type": "number",
+          "description": "Cumulative avoided discretionary spending."
+        },
+        "lastAuto16Month": {
+          "type": "string",
+          "description": "Last YYYY-MM recorded automatically on/after the 16th.",
+          "maxLength": 10
+        },
+        "monthlySnapshots": {
+          "type": "object",
+          "description": "Map of YYYY-MM keys to MonthlySnapshot objects (max 120 keys)."
+        },
+        "jars": {
+          "type": "array",
+          "description": "Savings & capital goals list (max 50 items)."
+        },
+        "wishes": {
+          "type": "array",
+          "description": "Planned purchases list (max 100 items)."
+        },
+        "paused": {
+          "type": "array",
+          "description": "72-hour cooling-off review queue (max 100 items)."
+        },
+        "bought": {
+          "type": "array",
+          "description": "Expense & purchase history entries (max 250 items)."
+        },
+        "ious": {
+          "type": "array",
+          "description": "Receivables and payables list (max 100 items)."
+        },
+        "chores": {
+          "type": "array",
+          "description": "Pending tasks and invoices list (max 100 items)."
+        },
+        "shareLog": {
+          "type": "array",
+          "description": "Disbursal history entries (max 150 items)."
+        },
+        "activity": {
+          "type": "array",
+          "description": "Recent ledger activity log (max 40 items)."
+        },
+        "categoryBudgets": {
+          "type": "object",
+          "description": "Map of category names to monthly budget caps (max 30 keys)."
+        },
+        "subscriptions": {
+          "type": "array",
+          "description": "Recurring subscriptions and bills (max 100 items)."
+        },
+        "pinnedPlaces": {
+          "type": "array",
+          "description": "Geotagged merchant pins from Google Maps (max 100 items)."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when ledger document was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when ledger document was last updated."
+        }
+      },
+      "required": [
+        "ownerId",
+        "edition",
+        "name",
+        "theme",
+        "currency",
+        "wallet",
+        "saved",
+        "share",
+        "allowance",
+        "pinEnabled",
+        "pinCode",
+        "skippedTotal",
+        "lastAuto16Month",
+        "monthlySnapshots",
+        "jars",
+        "wishes",
+        "paused",
+        "bought",
+        "ious",
+        "chores",
+        "shareLog",
+        "activity",
+        "categoryBudgets",
+        "subscriptions",
+        "pinnedPlaces",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": {
+        "$ref": "#/entities/UserProfile"
+      },
+      "description": "Private user account profile containing owner PII and preferred edition."
+    },
+    "/users/{userId}/ledgers/{editionId}": {
+      "schema": {
+        "$ref": "#/entities/LedgerEdition"
+      },
+      "description": "Edition-scoped ledger document ('adults' or 'kids') belonging strictly to {userId}."
+    }
+  }
+}

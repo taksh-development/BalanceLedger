@@ -1,0 +1,200 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Pillar 1 / Global Safety Net: Default-deny catch-all rule
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Security Primitives ---
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isEmailVerified() && request.auth.uid == userId;
+    }
+
+    function isMapListBounded(arr, maxLen) {
+      return arr is list && arr.size() <= maxLen && (arr.size() == 0 || arr[0] is map);
+    }
+
+    // --- Validation Blueprints ---
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll([
+          'ownerId', 'email', 'displayName', 'preferredEdition', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'email', 'displayName', 'preferredEdition', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 254
+        && data.displayName is string
+        && data.displayName.size() >= 1
+        && data.displayName.size() <= 80
+        && data.preferredEdition in ['adults', 'kids']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidLedgerEdition(data, userId, editionId) {
+      return data.keys().hasAll([
+          'ownerId', 'edition', 'name', 'theme', 'currency',
+          'wallet', 'saved', 'share', 'allowance', 'pinEnabled', 'pinCode',
+          'skippedTotal', 'lastAuto16Month', 'monthlySnapshots',
+          'jars', 'wishes', 'paused', 'bought', 'ious', 'chores',
+          'shareLog', 'activity', 'categoryBudgets', 'subscriptions',
+          'pinnedPlaces', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'edition', 'name', 'theme', 'currency',
+          'wallet', 'saved', 'share', 'allowance', 'pinEnabled', 'pinCode',
+          'skippedTotal', 'lastAuto16Month', 'monthlySnapshots',
+          'jars', 'wishes', 'paused', 'bought', 'ious', 'chores',
+          'shareLog', 'activity', 'categoryBudgets', 'subscriptions',
+          'pinnedPlaces', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string
+        && isValidId(data.ownerId)
+        && data.ownerId == request.auth.uid
+        && data.ownerId == userId
+        && data.edition is string
+        && data.edition == editionId
+        && data.edition in ['adults', 'kids']
+        && data.name is string
+        && data.name.size() >= 1
+        && data.name.size() <= 80
+        && data.theme in ['light', 'dark']
+        && data.currency in ['USD', 'PAB', 'EUR', 'GBP', 'CAD', 'AUD', 'MXN', 'INR', 'JPY']
+        && data.wallet is number
+        && data.saved is number
+        && data.share is number
+        && data.allowance is number
+        && data.pinEnabled is bool
+        && data.pinCode is string
+        && data.pinCode.size() >= 1
+        && data.pinCode.size() <= 16
+        && data.skippedTotal is number
+        && data.lastAuto16Month is string
+        && data.lastAuto16Month.size() <= 10
+        && data.monthlySnapshots is map
+        && data.monthlySnapshots.keys().size() <= 120
+        && data.categoryBudgets is map
+        && data.categoryBudgets.keys().size() <= 30
+        && isMapListBounded(data.jars, 50)
+        && isMapListBounded(data.wishes, 100)
+        && isMapListBounded(data.paused, 100)
+        && isMapListBounded(data.bought, 250)
+        && isMapListBounded(data.ious, 100)
+        && isMapListBounded(data.chores, 100)
+        && isMapListBounded(data.shareLog, 150)
+        && isMapListBounded(data.activity, 40)
+        && isMapListBounded(data.subscriptions, 100)
+        && isMapListBounded(data.pinnedPlaces, 100)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // --- Collection: /users/{userId} (PII Isolated to Owner) ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'displayName', 'preferredEdition', 'email', 'updatedAt'
+        ]);
+
+      allow delete: if isValidId(userId) && isOwner(userId);
+
+      // --- Subcollection: /users/{userId}/ledgers/{editionId} ---
+      match /ledgers/{editionId} {
+        function parentUserOwned() {
+          return exists(/databases/$(database)/documents/users/$(userId))
+            && get(/databases/$(database)/documents/users/$(userId)).data.ownerId == request.auth.uid;
+        }
+
+        allow get: if isValidId(userId)
+          && isValidId(editionId)
+          && editionId in ['adults', 'kids']
+          && isOwner(userId)
+          && parentUserOwned();
+
+        allow list: if isOwner(userId)
+          && existing().ownerId == request.auth.uid;
+
+        allow create: if isValidId(userId)
+          && isValidId(editionId)
+          && editionId in ['adults', 'kids']
+          && isOwner(userId)
+          && isValidLedgerEdition(incoming(), userId, editionId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && parentUserOwned();
+
+        allow update: if isValidId(userId)
+          && isValidId(editionId)
+          && editionId in ['adults', 'kids']
+          && isOwner(userId)
+          && isValidLedgerEdition(incoming(), userId, editionId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().edition == existing().edition
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && parentUserOwned()
+          && (
+            incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'theme', 'currency', 'allowance', 'pinEnabled', 'pinCode', 'updatedAt'
+            ])
+            || incoming().diff(existing()).affectedKeys().hasOnly([
+              'name', 'theme', 'currency', 'wallet', 'saved', 'share',
+              'allowance', 'pinEnabled', 'pinCode', 'skippedTotal',
+              'lastAuto16Month', 'monthlySnapshots', 'jars', 'wishes',
+              'paused', 'bought', 'ious', 'chores', 'shareLog',
+              'activity', 'categoryBudgets', 'subscriptions',
+              'pinnedPlaces', 'updatedAt'
+            ])
+          );
+
+        allow delete: if isValidId(userId)
+          && isValidId(editionId)
+          && editionId in ['adults', 'kids']
+          && isOwner(userId)
+          && parentUserOwned();
+      }
+    }
+  }
+}

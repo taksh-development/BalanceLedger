@@ -1,0 +1,6 @@
+{
+  "name": "BalanceLedger",
+  "description": "Personal money ledger, exact balance calibrator, and 16th-of-month annual progress report tracker.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
